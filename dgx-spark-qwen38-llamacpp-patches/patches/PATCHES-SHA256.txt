@@ -1,5 +1,0 @@
-702b240e68a72a3b81d2f11c75fae26ce1f7de8a0056cd329402acbd18d10645  01-server-fix-hybrid-recurrent-checkpoint-restore.patch
-7922f8ada914ea80c188f19ee1fef68891e23731137798f644b124d8f735b595  02-llama-switch-MTP-draft-borrow-to-unsloth-s-tensor-pr.patch
-509423f413706b4c6848d5f7cb6e14aaa4911b3c7276902f9fb862eef1dd11d9  03-qwen4exp-fix-MTP-hc_head_norm-tensor-layout-after-up.patch
-717bd7a45e1be52a109113d74c573d7442ce2c5112685368ac818b26e8dc1a5c  04-ggml-qwen4exp-fused-gated-hc_pre-and-identity-comb-h.patch
-63884285ec680816db9812690a0a3ae48271b7362982722d0afc3b255d6454aa  05-cuda-fattn-per-query-tile-sparse-index-lists-enable-.patch
