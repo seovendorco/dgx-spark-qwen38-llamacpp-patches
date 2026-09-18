@@ -1,0 +1,165 @@
+From 7e5fd89014c6e1bd5e29bb0f6a153c6688bed573 Mon Sep 17 00:00:00 2001
+From: zternal <zternal@localhost>
+Date: Tue, 15 Sep 2026 14:53:49 +0800
+Subject: [PATCH] llama: switch MTP draft borrow to unsloth's tensor-presence
+ gate (f36eda840)
+
+Replace our KV-flag-gated shared-embd borrow with unsloth's design: a draft
+head is detected by the absence of token_embd.weight in the file, not by a
+nextn_shared_target_tensors metadata flag. Removes the flag coupling that
+let the load-time path fire against a trunk-less layout it was never
+validated for (the Flash-Next shared-draft startup crash).
+
+Cherry-picked from origin/mtp/borrow-target-tensors f36eda840; 11 conflict
+hunks resolved by taking unsloth's side. Our qwen4exp MTP head/export work
+(518efa22d e52b4b00c 2b984b941 b0653f3fd b76199698) is untouched.
+---
+ common/speculative.cpp     |  1 +
+ conversion/base.py         |  1 +
+ include/llama.h            |  3 ++-
+ src/llama-model-loader.cpp | 31 +++++++++++++++++--------------
+ src/llama-model-loader.h   |  7 ++++---
+ 5 files changed, 25 insertions(+), 18 deletions(-)
+
+diff --git a/common/speculative.cpp b/common/speculative.cpp
+index 0d9f172a4..8d5995593 100644
+--- a/common/speculative.cpp
++++ b/common/speculative.cpp
+@@ -2559,6 +2559,7 @@ common_speculative_init_result::common_speculative_init_result(
+         model_path = params.speculative.draft.mparams.path;
+         LOG_INF("%s: loading draft model '%s'\n", __func__, model_path.c_str());
+ 
++        // a draft head can leave out the embeddings and lm head and use the target's
+         mparams.model_shared = model_tgt;
+ 
+         llama_model * model_dft = llama_model_load_from_file(params.model.path.c_str(), mparams);
+diff --git a/conversion/base.py b/conversion/base.py
+index 3cf53bcdc..1f0cabf58 100644
+--- a/conversion/base.py
++++ b/conversion/base.py
+@@ -120,6 +120,7 @@ class ModelBase:
+     supports_mtp_export: bool = False
+     mtp_only: bool = False
+     no_mtp: bool = False
++    # with mtp_only, leave the shared embeddings and lm head to the target model
+     mtp_shared_embd: bool = False
+ 
+     def __init__(self, dir_model: Path, ftype: gguf.LlamaFileType, fname_out: Path, *, is_big_endian: bool = False,
+diff --git a/include/llama.h b/include/llama.h
+index 9f14c3721..952519b03 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -341,7 +341,8 @@ extern "C" {
+         // override key-value pairs of the model meta data
+         const struct llama_model_kv_override * kv_overrides;
+ 
+-        // target for a draft head that declares nextn_shared_target_tensors; must outlive this model
++        // already loaded model to take the shared embeddings and lm head from, for a draft
++        // head that ships neither. must outlive the model being loaded
+         const struct llama_model * model_shared;
+ 
+         // Keep the booleans together to avoid misalignment during copy-by-value.
+diff --git a/src/llama-model-loader.cpp b/src/llama-model-loader.cpp
+index d062d511a..329bac91c 100644
+--- a/src/llama-model-loader.cpp
++++ b/src/llama-model-loader.cpp
+@@ -1110,28 +1110,29 @@ bool llama_model_loader::lazy_read::add(const std::string & name, const ggml_ten
+ const std::vector<std::pair<std::string, ggml_tensor *>> & llama_internal_get_tensor_map(const llama_model * model);
+ 
+ struct ggml_tensor * llama_model_loader::borrow_shared_tensor(const LLM_TN_IMPL & tn, const std::initializer_list<int64_t> & ne) {
+-    // checked first so no other tensor in any model pays a metadata lookup
++    // only the tensors a draft head is allowed to leave out, checked first so no other
++    // tensor in any model costs a metadata lookup
+     if (tn.tensor != LLM_TENSOR_TOKEN_EMBD && tn.tensor != LLM_TENSOR_OUTPUT && tn.tensor != LLM_TENSOR_OUTPUT_NORM) {
+         return nullptr;
+     }
+ 
+-    if (shared_target_tensors < 0) {
+-        bool shared = false;
+-        get_key(LLM_KV_NEXTN_SHARED_TARGET_TENSORS, shared, false);
+-        shared_target_tensors = shared ? 1 : 0;
+-    }
+-    if (shared_target_tensors == 0) {
++    // a file that ships the tensor keeps its own copy
++    const std::string name = tn.str();
++    if (get_weight(name.c_str()) != nullptr) {
+         return nullptr;
+     }
+ 
+-    const std::string name = tn.str();
+-    if (get_weight(name.c_str()) != nullptr) {
++    // a draft that left out its embeddings left out the whole set, so the missing token_embd is
++    // what marks one. without this an arch that ties the head to its own token_embd when
++    // output.weight is absent (qwen3.5, qwen3-next) would borrow the target's head instead
++    if (get_weight("token_embd.weight") != nullptr) {
+         return nullptr;
+     }
+ 
+     if (model_shared == nullptr) {
+-        throw std::runtime_error(format("%s: this model is a draft head without its own '%s'; "
+-                    "load it as a draft of its target model, not on its own", __func__, name.c_str()));
++        throw std::runtime_error(format("%s: missing tensor '%s'; if this is a draft head that shares "
++                    "the target's embeddings, load it as a draft of its target model, not on its own",
++                    __func__, name.c_str()));
+     }
+ 
+     ggml_tensor * src = nullptr;
+@@ -1146,7 +1147,7 @@ struct ggml_tensor * llama_model_loader::borrow_shared_tensor(const LLM_TN_IMPL
+                     __func__, name.c_str()));
+     }
+ 
+-    // used directly, so the shapes must agree exactly
++    // the draft uses the tensor directly, so the shapes must agree exactly
+     size_t dim = 0;
+     for (const int64_t n : ne) {
+         if (dim >= GGML_MAX_DIMS || src->ne[dim] != n) {
+@@ -1164,7 +1165,8 @@ struct ggml_tensor * llama_model_loader::borrow_shared_tensor(const LLM_TN_IMPL
+ 
+     LLAMA_LOG_INFO("%s: tensor %s taken from the target model\n", __func__, name.c_str());
+ 
+-    // not counted in n_created/size_data: not in this file, neither allocated nor freed here
++    // not counted in n_created or size_data: the tensor is not in this file and is neither
++    // allocated nor freed here
+     return src;
+ }
+ 
+@@ -1388,7 +1390,8 @@ struct ggml_tensor * llama_model_loader::create_tensor(
+         return ret;
+     }
+ 
+-    // must precede check_tensor_dims, and must win over the arch fallback that ties output to token_embd
++    // must run before check_tensor_dims: the tensor is absent from this file by design, and for
++    // the lm head it must also win over the arch fallback that ties the head to token_embd
+     if (ggml_tensor * shared = borrow_shared_tensor(tn, ne)) {
+         return shared;
+     }
+diff --git a/src/llama-model-loader.h b/src/llama-model-loader.h
+index 7cf1d823c..e211302bd 100644
+--- a/src/llama-model-loader.h
++++ b/src/llama-model-loader.h
+@@ -117,10 +117,9 @@ struct llama_model_loader {
+         std::set<std::string>                  tensors;
+     } lazy;
+ 
++    // target model a draft head borrows the shared tensors from, see borrow_shared_tensor()
+     const struct llama_model * model_shared = nullptr;
+ 
+-    // cached nextn_shared_target_tensors, -1 until first read
+-    int shared_target_tensors = -1;
+ 
+     llama_files files;
+     llama_ftype ftype;
+@@ -243,7 +242,9 @@ struct llama_model_loader {
+         const llama_hparams & hparams, const buft_list_t * buft_list_cpu, const buft_list_t * buft_list_input, const buft_list_t * buft_list_output,
+         const buft_list_t * buft_list_layer, const LLM_TN_IMPL & tn, const std::initializer_list<int64_t> & ne, int flags);
+ 
+-    // token_embd/output/output_norm from the target. null unless the file declares the flag.
++    // a draft head that shares the target's embeddings does not carry its own token_embd,
++    // output or output_norm; take them from the target model instead. returns null unless the
++    // file is missing token_embd, so a model that ships its own tensors is never affected
+     struct ggml_tensor * borrow_shared_tensor(const LLM_TN_IMPL & tn, const std::initializer_list<int64_t> & ne);
+ 
+     void done_getting_tensors(bool partial = false) const;
+-- 
+2.43.0
+
