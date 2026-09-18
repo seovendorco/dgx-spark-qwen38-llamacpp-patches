@@ -1,0 +1,29 @@
+From fa297086936d29d81c42d4ab1b4bc4eab74bdc8e Mon Sep 17 00:00:00 2001
+From: zternal <zternal@localhost>
+Date: Thu, 10 Sep 2026 19:43:48 +0800
+Subject: [PATCH] server: fix hybrid recurrent checkpoint restore
+
+---
+ tools/server/server-context.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index f78cfb36d..ab31907c0 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -3342,6 +3342,12 @@ private:
+                                             if (cur.pos_max > pos_next) {
+                                                 return false;
+                                             }
++                                            // for hybrid/recurrent models (DeltaNet, Mamba), pos_min always equals
++                                            // the full sequence length, so the SWA-based pos_min check always fails.
++                                            // use pos_max <= pos_next instead to find the most recent valid checkpoint.
++                                            if (llama_model_is_recurrent(model_tgt) || llama_model_is_hybrid(model_tgt)) {
++                                                return cur.pos_max <= pos_next;
++                                            }
+                                             return cur.pos_min < pos_min_thold || cur.pos_min == 0;
+                                         }
+                                     );
+-- 
+2.43.0
+
