@@ -142,7 +142,8 @@ That is useful for testing the later qwen4exp/QSA work, but it is **not** the ex
 
 ## NVIDIA forum write-up
 
-The Phase 2 technical write-up used alongside this patch set is archived in [`docs/NVIDIA-FORUM-PHASE2.md`](docs/NVIDIA-FORUM-PHASE2.md).
+The Phase 2 technical write-up used alongside this patch set is posted in [`Single Spark Qwen3.8 Flash-Next + Qwen3.8 27B Left/Right Brain Hermes MoA (35-39 toks/s)
+`](https://forums.developer.nvidia.com/t/single-spark-qwen3-8-flash-next-qwen3-8-27b-left-right-brain-hermes-moa-35-39-toks-s/383579).
 
 ## License and third-party work
 
