@@ -1,6 +1,6 @@
 # Patch provenance and credits
 
-This archive contains the exact five patch files used to reconstruct the documented GX10 / DGX Spark production llama.cpp tree. The patch `From:` fields reflect the local integration branch and should not be interpreted as sole authorship of the underlying work.
+This archive contains the exact patch files (7 as of 2026-09-23: base patches 00a/00b + integration patches 01-05) used to reconstruct the documented GX10 / DGX Spark production llama.cpp tree. The patch `From:` fields reflect the local integration branch and should not be interpreted as sole authorship of the underlying work.
 
 ## 01 - hybrid/recurrent checkpoint restore
 
@@ -50,4 +50,4 @@ The production patch adds per-query-tile union index lists with live counts, wid
 
 ## Integrity
 
-`PATCHES-SHA256.txt` covers the five `.patch` files. `PROVENANCE.md` is explanatory metadata and is intentionally not part of the original patch hash manifest. The patch files themselves are unchanged from the verified production-reconstruction bundle.
+`PATCHES-SHA256.txt` covers the seven `.patch` files. `PROVENANCE.md` is explanatory metadata and is intentionally not part of the original patch hash manifest. The patch files themselves are unchanged from the verified production-reconstruction bundle.
