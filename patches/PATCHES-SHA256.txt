@@ -1,3 +1,5 @@
+a2698eb03eeef8f170ccec8e4d3f42160075714ccdb7d774fd142f6fffbbfd59  00a-base-qwen4exp-direct-reads-for-lazy-PLE-table.patch
+f7386859820601ea6ed8af3753cecc701545de8d173e7b39780bf9659485be3e  00b-base-lazy-share-direct-read-machinery-gemma4.patch
 702b240e68a72a3b81d2f11c75fae26ce1f7de8a0056cd329402acbd18d10645  01-server-fix-hybrid-recurrent-checkpoint-restore.patch
 7922f8ada914ea80c188f19ee1fef68891e23731137798f644b124d8f735b595  02-llama-switch-MTP-draft-borrow-to-unsloth-s-tensor-pr.patch
 509423f413706b4c6848d5f7cb6e14aaa4911b3c7276902f9fb862eef1dd11d9  03-qwen4exp-fix-MTP-hc_head_norm-tensor-layout-after-up.patch
